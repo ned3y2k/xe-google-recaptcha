@@ -1,0 +1,8 @@
+<response>
+    <error>0</error>
+    <message>success</message>
+    <google_recaptcha_about><![CDATA[%s]]></google_recaptcha_about>
+    <google_recaptcha_image><![CDATA[%s]]></google_recaptcha_image>
+    <google_recaptcha_voice><![CDATA[%s]]></google_recaptcha_voice>
+    <cmd_cancel><![CDATA[%s]]></cmd_cancel>
+</response>
