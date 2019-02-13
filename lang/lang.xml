@@ -1,11 +1,14 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <lang>
-    <item name="google_recaptcha_about">
-        <value xml:lang="ko"><![CDATA[인증 방법을 선택하세요.]]></value>
-        <value xml:lang="en"><![CDATA[Please select an authentication method.]]></value>
-        <value xml:lang="jp"><![CDATA[認証方法を選択してください。]]></value>
-    </item>
-    <item name="google_recaptcha_image">
+	<item name="google_recaptcha_wait">
+		<value xml:lang="ko"><![CDATA[reCAPTCHA 를 기다리는 중입니다.
+브라우저가 Javascript를 지원하지 않으면 사용할 수 없습니다.]]></value>
+        <value xml:lang="en"><![CDATA[Waiting to load reCAPTCHA
+If your browser does not support Javascript, you will not be able to use it.]]></value>
+        <value xml:lang="jp"><![CDATA[reCAPTCHAをロードれるのを待っています。
+ブラウザがJavascriptをサポートしていないと使用できません。]]></value>	
+	</item>
+	<item name="google_recaptcha_image">
         <value xml:lang="ko"><![CDATA[이미지]]></value>
         <value xml:lang="en"><![CDATA[Image]]></value>
         <value xml:lang="jp"><![CDATA[画像]]></value>
@@ -16,5 +19,4 @@
         <value xml:lang="en"><![CDATA[Voice]]></value>
         <value xml:lang="jp"><![CDATA[音声]]></value>
     </item>
-
 </lang>

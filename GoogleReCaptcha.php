@@ -7,7 +7,8 @@
 
 class GoogleReCaptcha {
 	const CAPTCHA_AUTHED = 'google_captcha_authed';
-	const CAPTCHA_JS              = './addons/google_recaptcha/google_recaptcha.js';
+	const CAPTCHA_JS_V2 = './addons/google_recaptcha/google_recaptcha.v2.js';
+	const CAPTCHA_JS_V3 = './addons/google_recaptcha/google_recaptcha.v3.js';
 
 	private $addon_info;
 	private $addon_path;
@@ -15,6 +16,7 @@ class GoogleReCaptcha {
 
 	private $target_acts = [];
 	private $html;
+	private $apiVersion;
 
 	/** @return Context */
 	function context() { return Context::getInstance(); }
@@ -26,8 +28,6 @@ class GoogleReCaptcha {
 	}
 
 	function loadHtml() {
-		$this->loadLang();
-
 		if (!$this->html)
 			$this->html = TemplateHandler::getInstance()->compile($this->addon_path . '/skin', 'view');
 
@@ -35,12 +35,14 @@ class GoogleReCaptcha {
 	}
 
 	/**
-	 * @param string $addon_info XE의 애드온들은 각각 독자적인 설정과 애드온이 동작하기를 원하는 대상 모듈을 지정할 수 있습니다.<br>
-	 *                           이 정보들이 $addon_info 변수를 통해서 전달됩니다.
+	 * @param stdClass $addon_info XE의 애드온들은 각각 독자적인 설정과 애드온이 동작하기를 원하는 대상 모듈을 지정할 수 있습니다.<br>
+	 *                             이 정보들이 $addon_info 변수를 통해서 전달됩니다.
 	 */
 	function setInfo($addon_info) {
 		$this->addon_info = $addon_info;
 		$this->test       = $this->addon_info->test == 'Y';
+		$this->apiVersion = $this->addon_info->version ? $this->addon_info->version : 'v2';
+		$this->loadLang();
 	}
 
 	/**
@@ -50,10 +52,14 @@ class GoogleReCaptcha {
 	 *
 	 * @return bool
 	 */
-	function before_module_init(ModuleHandler $moduleHandler) {
+	function before_module_init($moduleHandler) {
 		/** @var stdClass $logged_info */
 		$logged_info = $this->context()->get('logged_info');
-		if ($logged_info->is_admin == 'Y' || $logged_info->is_site_admin) {
+
+		$module = $this->context()->get('module');
+
+
+		if ($module == 'admin' || !$this->test && ($logged_info->is_admin == 'Y' || $logged_info->is_site_admin)) {
 			return false;
 		}
 
@@ -64,18 +70,44 @@ class GoogleReCaptcha {
 			return false;
 		}
 
-		$this->target_acts = array('procBoardInsertDocument', 'procBoardInsertComment', 'procIssuetrackerInsertIssue', 'procIssuetrackerInsertHistory', 'procTextyleInsertComment');
+		$this->target_acts = ['procBoardInsertDocument', 'procBoardInsertComment', 'procIssuetrackerInsertIssue', 'procIssuetrackerInsertHistory', 'procTextyleInsertComment'];
+
+		$this->loadLang();
 
 		if ($this->context()->getRequestMethod() != 'XMLRPC' && $this->context()->getRequestMethod() !== 'JSON') {
-			$this->context()->addHtmlHeader('<script>var captchaTargetActList	 = ' . json_encode($this->target_acts) . '; var gCaptchaSiteKey = "' . $this->addon_info->siteKey . '";</script>');
-			$this->context()->addHtmlHeader("<script src='https://www.google.com/recaptcha/api.js?onload=onLoadGoogleReCaptcha&render=explicit' async defer></script>");
-			$this->context()->loadFile(array(self::CAPTCHA_JS));
+			// HTML에 recaptcha를 로드하고 ./addons/google_recaptcha/google_recaptcha.js 에서 target act를 식별할수 있도록...
+			$pendingMsg = $this->context()->getLang('google_recaptcha_wait');
+			$pendingMsg = str_replace("\r\n", "\n", $pendingMsg);
+			$pendingMsg = str_replace("\n", "\\n", $pendingMsg);
+
+
+			$this->context()
+			     ->addHtmlHeader('<script>var captchaTargetActList	 = ' . json_encode($this->target_acts) . '; var gCaptchaSiteKey = "' . $this->addon_info->siteKey . '";var gCaptchaPending = "' . $pendingMsg . '";</script>');
+			if ($this->apiVersion == 'v2') {
+				$this->context()
+				     ->addHtmlHeader("<script src='https://www.google.com/recaptcha/api.js?onload=onLoadGoogleReCaptcha&render=explicit' async defer></script>");
+				$this->context()->loadFile([self::CAPTCHA_JS_V2]);
+			} elseif ($this->apiVersion == 'v3') {
+				$this->context()
+				     ->addHtmlHeader("<script src='https://www.google.com/recaptcha/api.js?render={$this->addon_info->siteKey}'></script>");
+				$this->context()->addHtmlHeader("<script src='" . self::CAPTCHA_JS_V3 . "'></script>");
+			}
 		}
 
-		// compare session when calling actions such as writing a post or a comment on the board/issue tracker module
-		if (!$_SESSION[self::CAPTCHA_AUTHED] && in_array($this->context()->get('act'), $this->target_acts)) {
-			$this->loadLang();
-			$moduleHandler->error = "captcha_denied";
+		if ($this->apiVersion == 'v2') {
+			// compare session when calling actions such as writing a post or a comment on the board/issue tracker module
+			if (in_array($this->context()->get('act'), $this->target_acts) && !$_SESSION[self::CAPTCHA_AUTHED]) {
+				$moduleHandler->error = "captcha_denied";
+			}
+		} elseif ($this->apiVersion == 'v3') {
+
+			$this->context()->set('response', $this->context()->get('google_response'));
+			$this->compareCaptcha();
+
+
+			if (!$_SESSION[self::CAPTCHA_AUTHED] && in_array($this->context()->get('act'), $this->target_acts)) {
+				$moduleHandler->error = "captcha_denied";
+			}
 		}
 
 		return true;
@@ -86,7 +118,7 @@ class GoogleReCaptcha {
 	 *
 	 * @param ModuleObject $moduleObject
 	 */
-	function before_module_proc(ModuleObject $moduleObject) {
+	function before_module_proc($moduleObject) {
 		if ($this->addon_info->act_type == 'everytime' && $_SESSION[self::CAPTCHA_AUTHED]) {
 			unset($_SESSION[self::CAPTCHA_AUTHED]);
 		}
@@ -97,7 +129,7 @@ class GoogleReCaptcha {
 	 *
 	 * @param ModuleObject $moduleObject
 	 */
-	function after_module_proc(ModuleObject $moduleObject) { }
+	function after_module_proc($moduleObject) { }
 
 	function before_module_init_getHtml() {
 		if ($_SESSION[self::CAPTCHA_AUTHED]) {
@@ -120,7 +152,6 @@ class GoogleReCaptcha {
 	}
 
 	function compareCaptcha() {
-//		var_dump(in_array($this->context()->get('act'), $this->target_acts), $this->target_acts, $this->context()->get('act'));exit;
 		if (!in_array($this->context()->get('act'), $this->target_acts)) {
 			return true;
 		}
@@ -168,24 +199,25 @@ class GoogleReCaptcha {
 	 */
 	private function getResponse() {
 		$post_data = http_build_query(
-			array(
-				'secret'   => $this->addon_info->secretKey,
+			[
+				'secret' => $this->addon_info->secretKey,
 				'response' => $this->context()->get('response'),
 				'remoteip' => $_SERVER['REMOTE_ADDR']
-			)
+			]
 		);
 
 		$ch = curl_init();
 
-		curl_setopt($ch, CURLOPT_URL,'https://www.google.com/recaptcha/api/siteverify');
+		curl_setopt($ch, CURLOPT_URL, 'https://www.google.com/recaptcha/api/siteverify');
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 		curl_setopt($ch, CURLOPT_POST, 1);
 		curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		$response = curl_exec ($ch);
-		curl_close ($ch);
-		$result    = (array)json_decode($response);
+		$response = curl_exec($ch);
+		curl_close($ch);
+		$result = (array)json_decode($response);
 
+		file_put_contents("f:/debug.txt", $response);
 
 		if (!$result['success']) {
 			throw new RuntimeException($result["error-codes"][0]);

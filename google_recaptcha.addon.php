@@ -4,7 +4,9 @@
  * Date: 2017-08-23
  * Time: 오전 7:22
  */
-
+ini_set('display_errors', 1);
+ini_set('error_reporting', E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE);
+ 
 const ADDON_GOOGLE_RE_CAPTCHA = '__AddonGoogleReCaptcha__';
 
 if (!defined("__XE__")) exit();
@@ -42,9 +44,6 @@ if (!class_exists('GoogleReCaptcha', false)) {
 }
 /** @var GoogleReCaptcha $addon */
 $addon = $GLOBALS[ADDON_GOOGLE_RE_CAPTCHA];
-
-//ini_set('display_errors', 1);
-ini_set('error_reporting', E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE);
 
 $addon_act_postfix  = context()->get('google_recaptcha_action');
 $invoke_method_name = $called_position . '_' . $addon_act_postfix;
